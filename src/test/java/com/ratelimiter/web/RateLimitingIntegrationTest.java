@@ -3,11 +3,14 @@ package com.ratelimiter.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ratelimiter.admin.RateLimitPolicyResponse;
+import com.ratelimiter.admin.UpdateRateLimitPolicyRequest;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -18,35 +21,49 @@ import org.springframework.http.ResponseEntity;
  * customerA 100 req/min, customerB 1000 req/min, customerC 10 req/sec.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@AutoConfigureTestRestTemplate
 class RateLimitingIntegrationTest {
 
     @Autowired
     private TestRestTemplate testRestTemplate;
 
     @Test
-    void customerAIsAllowedExactlyOneHundredRequestsPerMinute() {
-        for (int i = 1; i <= 100; i++) {
-            assertThat(pingAs("customerA").getStatusCode()).isEqualTo(HttpStatus.OK);
-        }
-        assertThat(pingAs("customerA").getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    void customerAIsConfiguredWithOneHundredRequestsPerMinute() {
+        assertThat(policyFor("customerA").maxRequests()).isEqualTo(100);
+        assertThat(policyFor("customerA").windowDuration()).isEqualTo(Duration.ofMinutes(1));
     }
 
     @Test
-    void customerCIsAllowedExactlyTenRequestsPerSecond() {
-        for (int i = 1; i <= 10; i++) {
-            assertThat(pingAs("customerC").getStatusCode()).isEqualTo(HttpStatus.OK);
-        }
-        assertThat(pingAs("customerC").getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    void customerBIsConfiguredWithOneThousandRequestsPerMinute() {
+        assertThat(policyFor("customerB").maxRequests()).isEqualTo(1000);
+        assertThat(policyFor("customerB").windowDuration()).isEqualTo(Duration.ofMinutes(1));
     }
 
     @Test
-    void customerBHasAConfiguredLimitOfOneThousandRequestsPerMinuteAndIsInitiallyAllowed() {
-        ResponseEntity<RateLimitPolicyResponse> policyResponse =
-                testRestTemplate.getForEntity("/api/rate-limits/customerB", RateLimitPolicyResponse.class);
+    void customerCIsConfiguredWithTenRequestsPerSecond() {
+        assertThat(policyFor("customerC").maxRequests()).isEqualTo(10);
+        assertThat(policyFor("customerC").windowDuration()).isEqualTo(Duration.ofSeconds(1));
+    }
 
-        assertThat(policyResponse.getBody()).isNotNull();
-        assertThat(policyResponse.getBody().maxRequests()).isEqualTo(1000);
-        assertThat(pingAs("customerB").getStatusCode()).isEqualTo(HttpStatus.OK);
+    // Overrides use a long window so token refill during the HTTP round-trips below can't flake the assertions.
+    @Test
+    void requestsExceedingTheConfiguredLimitAreRejected() {
+        overridePolicy("customerUnderTest", 5, Duration.ofHours(1));
+
+        for (int i = 1; i <= 5; i++) {
+            assertThat(pingAs("customerUnderTest").getStatusCode()).isEqualTo(HttpStatus.OK);
+        }
+        assertThat(pingAs("customerUnderTest").getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    @Test
+    void requestsWithinTheConfiguredLimitAreIndependentPerClient() {
+        overridePolicy("customerOne", 1, Duration.ofHours(1));
+        overridePolicy("customerTwo", 1, Duration.ofHours(1));
+
+        assertThat(pingAs("customerOne").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(pingAs("customerOne").getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(pingAs("customerTwo").getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test
@@ -54,6 +71,16 @@ class RateLimitingIntegrationTest {
         ResponseEntity<String> response = testRestTemplate.getForEntity("/api/ping", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    private RateLimitPolicyResponse policyFor(String clientId) {
+        ResponseEntity<RateLimitPolicyResponse> response =
+                testRestTemplate.getForEntity("/api/rate-limits/" + clientId, RateLimitPolicyResponse.class);
+        return response.getBody();
+    }
+
+    private void overridePolicy(String clientId, int maxRequests, Duration windowDuration) {
+        testRestTemplate.put("/api/rate-limits/" + clientId, new UpdateRateLimitPolicyRequest(maxRequests, windowDuration));
     }
 
     private ResponseEntity<String> pingAs(String clientId) {
