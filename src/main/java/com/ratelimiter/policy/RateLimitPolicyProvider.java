@@ -42,6 +42,7 @@ public class RateLimitPolicyProvider {
         this.defaultPolicy = Objects.requireNonNull(policy, "policy must not be null");
     }
 
+    // Converts the configuration properties to a {@link RateLimitPolicy} instance.
     private static RateLimitPolicy toRateLimitPolicy(RateLimiterProperties.PolicyProperties properties) {
         Objects.requireNonNull(properties, "policy properties must not be null");
         return new RateLimitPolicy(properties.maxRequests(), properties.windowDuration());

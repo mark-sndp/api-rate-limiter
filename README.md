@@ -1,4 +1,4 @@
-# api-rate-limiter
+# API-Rate-Limiter
 
 An in-memory, per-client API rate limiting service built with Java 21 and Spring Boot 4.
 
@@ -13,14 +13,14 @@ current policy, `false` if the client has exceeded its limit.
 
 ## How it works
 
-- **Algorithm**: token bucket per client (`TokenBucket`). Each client has a bucket that holds up
+- **Algorithm**: Token bucket per client (`TokenBucket`). Each client has a bucket that holds up
   to `maxRequests` tokens and refills continuously at `maxRequests / windowDuration`. This allows
   short bursts up to the configured maximum while enforcing a steady average rate.
-- **Thread safety**: each `TokenBucket` guards its state with a single `synchronized` method, so
+- **Thread safety**: Each `TokenBucket` guards its state with a single `synchronized` method, so
   concurrent requests for the same client are serialized correctly. Buckets are stored in a
   `com.github.benmanes.caffeine.cache.Cache<String, TokenBucket>`, which is safe for concurrent
   access across many different clients.
-- **Bounded memory**: buckets are evicted after `rate-limiter.bucket-eviction-duration` of
+- **Bounded memory**: Buckets are evicted after `rate-limiter.bucket-eviction-duration` of
   inactivity (Caffeine `expireAfterAccess`), so memory does not grow indefinitely as new clients
   are seen. An evicted client simply gets a fresh, full bucket on its next request — this is safe
   (never more permissive than the configured rate over any window), just not persisted forever.
@@ -141,19 +141,17 @@ mvn test -Dgroups=redis
   requirement's simplest interpretation and requires no extra infrastructure to run or test.
   Switching a horizontally-scaled deployment to the Redis store (`rate-limiter.store=redis`) is a
   configuration change, not a code change, thanks to the `RateLimiter` strategy interface.
-- **Redis is a single point of failure/bottleneck once enabled**: this implementation targets a
-  single Redis instance (or a client-side-compatible cluster via hash-tagged keys). Production use
-  at larger scale would want Redis Cluster/Sentinel for availability and to shard bucket keys.
-- **Policies are not persisted**: runtime overrides live only in memory (or only in the in-memory
+- **Redis is a single point of failure/bottleneck once enabled**: This implementation targets a
+  single Redis instance. Production use at larger scale would want Redis Cluster/Sentinel for availability.
+- **Policies are not persisted**: Runtime overrides live only in memory (or only in the in-memory
   `RateLimitPolicyProvider`, regardless of which `RateLimiter` store is active) and are lost on
   restart. A production deployment would back `RateLimitPolicyProvider` with a database or config
-  service, or replicate policy updates to all instances (e.g. via Redis pub/sub) when running the
-  Redis store.
+  service.
 - **No authentication on the admin API**: `/api/rate-limits/**` has no access control in this
   exercise. Production use requires securing these endpoints (e.g. Spring Security with RBAC).
-- **No request queueing**: requests exceeding the limit are rejected immediately, per the
+- **No request queueing**: Requests exceeding the limit are rejected immediately, per the
   requirements — there is no fairness queue or backoff/retry mechanism.
-- **Monotonic clock**: the in-memory implementation uses `System.nanoTime()` (immune to wall-clock/
+- **Monotonic clock**: The in-memory implementation uses `System.nanoTime()` (immune to wall-clock/
   NTP adjustments); the Redis implementation uses `System.currentTimeMillis()` from whichever
   instance handles the request, so significant clock drift between application hosts could skew
   refill timing slightly — acceptable for rate limiting, but worth running NTP in production.

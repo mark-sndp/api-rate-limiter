@@ -50,6 +50,8 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
                 String.valueOf(System.currentTimeMillis()),
                 String.valueOf(bucketEvictionSeconds));
 
+        // Redis returns null if the script fails to execute,
+        // which should be treated as a failed attempt to acquire a token.
         return allowed != null && allowed == 1L;
     }
 

@@ -14,6 +14,7 @@ public record RateLimiterProperties(
         Map<String, PolicyProperties> customerPolicies,
         String store) {
 
+    // Default values for optional properties are applied in the canonical constructor.
     public RateLimiterProperties {
         customerPolicies = customerPolicies == null ? Map.of() : customerPolicies;
         store = store == null ? "in-memory" : store;

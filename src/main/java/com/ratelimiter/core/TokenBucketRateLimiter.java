@@ -30,6 +30,13 @@ public class TokenBucketRateLimiter implements RateLimiter {
                 .build();
     }
 
+    /**
+     * Attempts to acquire a token for the given client ID. If the client's bucket has tokens available,
+     * one token is consumed and the method returns true. If the bucket is empty, the method returns false.
+     *
+     * @param clientId identifier of the client making the request, must not be null or blank
+     * @return true if the request is allowed under the client's current rate limit policy
+     */
     @Override
     public boolean tryAcquire(String clientId) {
         RateLimitPolicy policy = policyProvider.resolvePolicy(clientId);
