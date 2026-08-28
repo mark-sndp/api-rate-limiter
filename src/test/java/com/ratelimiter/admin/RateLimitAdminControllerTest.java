@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ratelimiter.domain.RateLimitPolicy;
 import com.ratelimiter.policy.RateLimitPolicyProvider;
+import com.ratelimiter.service.RateLimiterService;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+// RateLimitingFilter is auto-detected by @WebMvcTest and needs RateLimiterService, so it must be mocked too.
 @WebMvcTest(RateLimitAdminController.class)
 class RateLimitAdminControllerTest {
 
@@ -28,6 +30,9 @@ class RateLimitAdminControllerTest {
 
     @MockBean
     private RateLimitPolicyProvider policyProvider;
+
+    @MockBean
+    private RateLimiterService rateLimiterService;
 
     @Test
     void shouldReturnCurrentPolicyForClient() throws Exception {
