@@ -1,0 +1,13 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+README.md
+LICENSE
+Dockerfile
+docker-compose.yml
