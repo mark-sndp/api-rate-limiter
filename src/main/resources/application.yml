@@ -1,0 +1,19 @@
+rate-limiter:
+  default-policy:
+    max-requests: 60
+    window-duration: 1m
+  # Idle client buckets are evicted after this duration of inactivity to bound memory usage.
+  bucket-eviction-duration: 1h
+  customer-policies:
+    customerA:
+      max-requests: 100
+      window-duration: 1m
+    customerB:
+      max-requests: 1000
+      window-duration: 1m
+    customerC:
+      max-requests: 10
+      window-duration: 1s
+
+server:
+  port: 8080
