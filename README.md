@@ -1,6 +1,6 @@
 # api-rate-limiter
 
-An in-memory, per-client API rate limiting service built with Java 17 and Spring Boot.
+An in-memory, per-client API rate limiting service built with Java 21 and Spring Boot.
 
 ## Core API
 
