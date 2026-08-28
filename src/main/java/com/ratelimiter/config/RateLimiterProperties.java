@@ -11,10 +11,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record RateLimiterProperties(
         PolicyProperties defaultPolicy,
         Duration bucketEvictionDuration,
-        Map<String, PolicyProperties> customerPolicies) {
+        Map<String, PolicyProperties> customerPolicies,
+        String store) {
 
     public RateLimiterProperties {
         customerPolicies = customerPolicies == null ? Map.of() : customerPolicies;
+        store = store == null ? "in-memory" : store;
     }
 
     /** Raw (pre-validation) representation of a rate limit policy as configured in YAML/properties. */

@@ -63,7 +63,7 @@ class RateLimitPolicyProviderTest {
 
     private static RateLimitPolicyProvider providerWithCustomerPolicies(Map<String, PolicyProperties> customerPolicies) {
         RateLimiterProperties properties = new RateLimiterProperties(
-                DEFAULT_POLICY_PROPERTIES, Duration.ofHours(1), customerPolicies);
+                DEFAULT_POLICY_PROPERTIES, Duration.ofHours(1), customerPolicies, null);
         return new RateLimitPolicyProvider(properties);
     }
 }

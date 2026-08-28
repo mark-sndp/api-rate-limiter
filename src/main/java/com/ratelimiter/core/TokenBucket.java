@@ -26,6 +26,7 @@ final class TokenBucket {
         this.lastRefillTimestampNanos = nanosecondTimeSource.getAsLong();
     }
 
+    // Attempts to consume a token from the bucket. Returns true if successful, false if the bucket is empty.
     synchronized boolean tryConsume(RateLimitPolicy policy) {
         reconfigureIfPolicyChanged(policy);
         refill();
@@ -44,6 +45,8 @@ final class TokenBucket {
         }
     }
 
+    // Refills the bucket with tokens based on the elapsed time since the last refill,
+    // up to the maximum capacity defined by the current policy.
     private void refill() {
         long now = nanosecondTimeSource.getAsLong();
         long elapsedNanoseconds = now - lastRefillTimestampNanos;

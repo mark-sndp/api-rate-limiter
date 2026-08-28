@@ -1,4 +1,6 @@
 rate-limiter:
+  # "in-memory" (default, single JVM only) or "redis" (shared state, required for horizontal scaling).
+  store: ${RATE_LIMITER_STORE:in-memory}
   default-policy:
     max-requests: 60
     window-duration: 1m
@@ -14,6 +16,12 @@ rate-limiter:
     customerC:
       max-requests: 10
       window-duration: 1s
+
+spring:
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
 server:
   port: 8080

@@ -74,7 +74,7 @@ class TokenBucketRateLimiterTest {
 
     private static TokenBucketRateLimiter rateLimiterWithDefaultPolicy(int maximumRequests, Duration windowDuration) {
         RateLimiterProperties properties = new RateLimiterProperties(
-                new PolicyProperties(maximumRequests, windowDuration), Duration.ofHours(1), Map.of());
+                new PolicyProperties(maximumRequests, windowDuration), Duration.ofHours(1), Map.of(), null);
         RateLimitPolicyProvider policyProvider = new RateLimitPolicyProvider(properties);
         return new TokenBucketRateLimiter(policyProvider, properties);
     }
