@@ -5,14 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.ratelimiter.config.RateLimiterProperties;
 import com.ratelimiter.config.RateLimiterProperties.PolicyProperties;
 import com.ratelimiter.policy.RateLimitPolicyProvider;
+import com.ratelimiter.policy.RateLimitPolicyRepository;
 import java.time.Duration;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 class TokenBucketRateLimiterTest {
 
@@ -35,6 +36,11 @@ class TokenBucketRateLimiterTest {
         assertThat(rateLimiter.tryAcquire("customerB")).isTrue();
     }
 
+    /**
+     * Verifies that the rate limiter is thread-safe when multiple threads attempt to acquire tokens for the same client.
+     * This test simulates concurrent requests and ensures that the total number of successful acquisitions does not
+     * exceed the configured limit.
+     */
     @Test
     void shouldRemainThreadSafeUnderConcurrentRequestsFromSameClient() throws InterruptedException {
         int maximumRequests = 20;
@@ -74,8 +80,9 @@ class TokenBucketRateLimiterTest {
 
     private static TokenBucketRateLimiter rateLimiterWithDefaultPolicy(int maximumRequests, Duration windowDuration) {
         RateLimiterProperties properties = new RateLimiterProperties(
-                new PolicyProperties(maximumRequests, windowDuration), Duration.ofHours(1), Map.of(), null);
-        RateLimitPolicyProvider policyProvider = new RateLimitPolicyProvider(properties);
+            new PolicyProperties(maximumRequests, windowDuration), Duration.ofHours(1), Duration.ofSeconds(1), null);
+        RateLimitPolicyProvider policyProvider = new RateLimitPolicyProvider(
+            properties, Mockito.mock(RateLimitPolicyRepository.class));
         return new TokenBucketRateLimiter(policyProvider, properties);
     }
 }

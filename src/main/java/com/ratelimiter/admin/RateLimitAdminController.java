@@ -42,7 +42,7 @@ public class RateLimitAdminController {
     @DeleteMapping("/{clientId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetPolicyToDefault(@PathVariable String clientId) {
-        policyProvider.removeOverride(clientId);
+        policyProvider.remove(clientId);
     }
 
     private static RateLimitPolicyResponse toResponse(String clientId, RateLimitPolicy policy) {

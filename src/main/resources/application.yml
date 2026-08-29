@@ -1,23 +1,22 @@
-rate-limiter:
+ratelimiter:
   # "in-memory" (default, single JVM only) or "redis" (shared state, required for horizontal scaling).
   store: ${RATE_LIMITER_STORE:in-memory}
-  default-policy:
-    max-requests: 60
-    window-duration: 1m
+  defaultPolicy:
+    maxRequests: 5
+    windowDuration: 1m
   # Idle client buckets are evicted after this duration of inactivity to bound memory usage.
-  bucket-eviction-duration: 1h
-  customer-policies:
-    customerA:
-      max-requests: 100
-      window-duration: 1m
-    customerB:
-      max-requests: 1000
-      window-duration: 1m
-    customerC:
-      max-requests: 10
-      window-duration: 1s
+  bucketEvictionDuration: 1h
+  # Customer-specific policy lookups are cached locally for this duration.
+  policyCacheDuration: 1s
 
 spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rate_limiter}
+    username: ${SPRING_DATASOURCE_USERNAME:rate_limiter}
+    password: ${SPRING_DATASOURCE_PASSWORD:rate_limiter}
+  jpa:
+    hibernate:
+      ddl-auto: validate
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}

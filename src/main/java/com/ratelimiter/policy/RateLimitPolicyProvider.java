@@ -2,49 +2,66 @@ package com.ratelimiter.policy;
 
 import com.ratelimiter.config.RateLimiterProperties;
 import com.ratelimiter.domain.RateLimitPolicy;
-import java.util.Map;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Resolves the effective {@link RateLimitPolicy} for a client, combining a configured
- * default with per-client overrides that can be changed at runtime without a restart.
+ * default from configuration with durable, per-client database overrides.
  */
 @Component
 public class RateLimitPolicyProvider {
 
-    private final ConcurrentMap<String, RateLimitPolicy> customerOverrides = new ConcurrentHashMap<>();
-    private volatile RateLimitPolicy defaultPolicy;
+    private final RateLimitPolicy defaultPolicy;
+    private final RateLimitPolicyRepository policyRepository;
+    private final Cache<String, Optional<RateLimitPolicy>> policiesByClientId;
 
-    public RateLimitPolicyProvider(RateLimiterProperties properties) {
+    public RateLimitPolicyProvider(RateLimiterProperties properties, RateLimitPolicyRepository policyRepository) {
         this.defaultPolicy = toRateLimitPolicy(properties.defaultPolicy());
-        for (Map.Entry<String, RateLimiterProperties.PolicyProperties> entry : properties.customerPolicies().entrySet()) {
-            customerOverrides.put(entry.getKey(), toRateLimitPolicy(entry.getValue()));
-        }
+        this.policyRepository = policyRepository;
+        this.policiesByClientId = Caffeine.newBuilder()
+                .expireAfterWrite(properties.policyCacheDuration())
+                .build();
     }
 
     /** Returns the client's override policy if one exists, otherwise the current default policy. */
     public RateLimitPolicy resolvePolicy(String clientId) {
-        return customerOverrides.getOrDefault(clientId, defaultPolicy);
+        validateClientId(clientId);
+        return policiesByClientId.get(clientId, this::fetchFromDB)
+                .orElse(defaultPolicy);
     }
 
+    @Transactional
     public void updatePolicy(String clientId, RateLimitPolicy policy) {
-        customerOverrides.put(clientId, Objects.requireNonNull(policy, "policy must not be null"));
+        validateClientId(clientId);
+        policyRepository.save(RateLimitPolicyEntity.from(clientId, Objects.requireNonNull(policy, "policy must not be null")));
+        policiesByClientId.invalidate(clientId);
     }
 
-    public void removeOverride(String clientId) {
-        customerOverrides.remove(clientId);
-    }
-
-    public void updateDefaultPolicy(RateLimitPolicy policy) {
-        this.defaultPolicy = Objects.requireNonNull(policy, "policy must not be null");
+    @Transactional
+    public void remove(String clientId) {
+        validateClientId(clientId);
+        policyRepository.deleteById(clientId);
+        policiesByClientId.invalidate(clientId);
     }
 
     // Converts the configuration properties to a {@link RateLimitPolicy} instance.
     private static RateLimitPolicy toRateLimitPolicy(RateLimiterProperties.PolicyProperties properties) {
         Objects.requireNonNull(properties, "policy properties must not be null");
         return new RateLimitPolicy(properties.maxRequests(), properties.windowDuration());
+    }
+
+    private Optional<RateLimitPolicy> fetchFromDB(String clientId) {
+        return policyRepository.findById(clientId).map(RateLimitPolicyEntity::toDomainPolicy);
+    }
+
+    private static void validateClientId(String clientId) {
+        if (clientId == null || clientId.isBlank()) {
+            throw new IllegalArgumentException("clientId must not be null or blank");
+        }
     }
 }

@@ -6,6 +6,7 @@ import com.ratelimiter.admin.RateLimitPolicyResponse;
 import com.ratelimiter.admin.UpdateRateLimitPolicyRequest;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
@@ -15,6 +16,10 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * End-to-end verification of the exact scenarios called out in the requirements:
@@ -22,10 +27,18 @@ import org.springframework.http.ResponseEntity;
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestRestTemplate
+@Testcontainers
 class RateLimitingIntegrationTest {
+
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgresql = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired
     private TestRestTemplate testRestTemplate;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void customerAIsConfiguredWithOneHundredRequestsPerMinute() {
@@ -64,6 +77,18 @@ class RateLimitingIntegrationTest {
         assertThat(pingAs("customerOne").getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(pingAs("customerOne").getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
         assertThat(pingAs("customerTwo").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void customerPolicyUpdatesArePersistedInPostgreSQL() {
+        overridePolicy("durableCustomer", 25, Duration.ofMinutes(2));
+
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM rate_limit_policy WHERE client_id = ? AND max_requests = ? "
+                        + "AND window_duration_millis = ?",
+                Integer.class, "durableCustomer", 25, Duration.ofMinutes(2).toMillis());
+
+        assertThat(count).isEqualTo(1);
     }
 
     @Test

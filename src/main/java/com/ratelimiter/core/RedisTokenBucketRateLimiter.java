@@ -36,7 +36,7 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
             RateLimiterProperties properties) {
         this.redisTemplate = redisTemplate;
         this.policyProvider = policyProvider;
-        this.bucketEvictionSeconds = properties.bucketEvictionDuration().toSeconds();
+        this.bucketEvictionSeconds = Math.max(1L, (long) Math.ceil(properties.bucketEvictionDuration().toMillis() / 1000.0));
     }
 
     @Override

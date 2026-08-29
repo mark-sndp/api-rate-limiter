@@ -1,6 +1,7 @@
 # API-Rate-Limiter
 
-An in-memory, per-client API rate limiting service built with Java 21 and Spring Boot 4.
+An API rate limiting service built with Java 21 and Spring Boot 4. The default policy is
+configuration-owned, and customer-specific policy overrides are stored in PostgreSQL.
 
 ## Core API
 
@@ -25,8 +26,9 @@ current policy, `false` if the client has exceeded its limit.
   are seen. An evicted client simply gets a fresh, full bucket on its next request — this is safe
   (never more permissive than the configured rate over any window), just not persisted forever.
 - **Per-client configuration**: `RateLimitPolicyProvider` resolves a policy per `clientId`,
-  falling back to a configured default. Overrides can be changed at runtime (see Admin API below)
-  without restarting the service.
+  falling back to the YAML default when PostgreSQL has no customer-specific override. Admin API
+  changes are durable. Each application instance caches override lookups for one second, so a
+  change made through another instance can take up to one second to become visible locally.
 - **Horizontal scaling**: `RateLimiter` is a Strategy interface. `TokenBucketRateLimiter` (in-memory,
   default) is limited to a single JVM. `RedisTokenBucketRateLimiter` shares bucket state across every
   application instance via Redis, so multiple instances behind a load balancer enforce one combined
@@ -39,7 +41,7 @@ current policy, `false` if the client has exceeded its limit.
 
 ## Configuration
 
-Default and per-customer policies are configured in `application.yml`:
+The default policy is configured in `application.yml`:
 
 ```yaml
 rate-limiter:
@@ -49,20 +51,17 @@ rate-limiter:
     max-requests: 60
     window-duration: 1m
   bucket-eviction-duration: 1h
-  customer-policies:
-    customerA:
-      max-requests: 100
-      window-duration: 1m
-    customerB:
-      max-requests: 1000
-      window-duration: 1m
-    customerC:
-      max-requests: 10
-      window-duration: 1s
 ```
 
-When `rate-limiter.store` is `redis`, the connection is configured via the standard
-`spring.data.redis.host` / `spring.data.redis.port` properties (defaults: `localhost` / `6379`).
+Customer-specific policies are stored in PostgreSQL table `rate_limit_policy`. Flyway creates the
+table and adds `customerA` (100/min), `customerB` (1000/min), and `customerC` (10/sec) during the
+initial migration. With no matching row, the YAML default is used.
+
+PostgreSQL uses standard `spring.datasource.url`, `spring.datasource.username`, and
+`spring.datasource.password` properties. The provided configuration accepts the matching
+`SPRING_DATASOURCE_*` environment variables and defaults to a local `rate_limiter` database.
+When `rate-limiter.store` is `redis`, Redis uses standard `spring.data.redis.host` /
+`spring.data.redis.port` properties (defaults: `localhost` / `6379`).
 
 ### Runtime admin API
 
@@ -99,8 +98,9 @@ mvn spring-boot:run
 
 ### Running multiple instances with Docker Compose
 
-`docker-compose.yml` starts Redis and one or more app instances configured with
-`RATE_LIMITER_STORE=redis`, so all instances share the same per-client quota:
+`docker-compose.yml` starts PostgreSQL, Redis, and one or more app instances configured with
+`RATE_LIMITER_STORE=redis`. PostgreSQL holds durable customer policy overrides and Redis ensures
+all instances share the same per-client quota:
 
 ```bash
 docker compose up --build --scale app=3
@@ -127,9 +127,9 @@ multi-threaded concurrency test asserting exactly `maxRequests` successes under 
 MockMvc tests for the admin API, and a full Spring Boot integration test reproducing the exact
 Customer A/B/C scenarios from the requirements.
 
-The Redis-backed rate limiter has its own Testcontainers-based test
-(`RedisTokenBucketRateLimiterTest`). It requires a running Docker daemon and is excluded from the
-default run; execute it explicitly with:
+The HTTP integration tests use a PostgreSQL Testcontainer and require a running Docker daemon. The
+Redis-backed rate limiter has its own tagged Testcontainers-based test
+(`RedisTokenBucketRateLimiterTest`); execute it explicitly with:
 
 ```bash
 mvn test -Dgroups=redis
@@ -143,10 +143,10 @@ mvn test -Dgroups=redis
   configuration change, not a code change, thanks to the `RateLimiter` strategy interface.
 - **Redis is a single point of failure/bottleneck once enabled**: This implementation targets a
   single Redis instance. Production use at larger scale would want Redis Cluster/Sentinel for availability.
-- **Policies are not persisted**: Runtime overrides live only in memory (or only in the in-memory
-  `RateLimitPolicyProvider`, regardless of which `RateLimiter` store is active) and are lost on
-  restart. A production deployment would back `RateLimitPolicyProvider` with a database or config
-  service.
+- **Policy source of truth**: The default policy is loaded from YAML at startup. Customer-specific
+  overrides are durable PostgreSQL records and survive restart. Changing the YAML default requires
+  a deployment restart; separately running instances can serve a cached customer override for up
+  to `rate-limiter.policy-cache-duration` after another instance changes it.
 - **No authentication on the admin API**: `/api/rate-limits/**` has no access control in this
   exercise. Production use requires securing these endpoints (e.g. Spring Security with RBAC).
 - **No request queueing**: Requests exceeding the limit are rejected immediately, per the

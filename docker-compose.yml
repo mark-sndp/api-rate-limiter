@@ -1,4 +1,19 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rate_limiter
+      POSTGRES_USER: rate_limiter
+      POSTGRES_PASSWORD: rate_limiter
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rate_limiter -d rate_limiter"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -13,11 +28,19 @@ services:
     restart: unless-stopped
     environment:
       RATE_LIMITER_STORE: redis
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rate_limiter
+      SPRING_DATASOURCE_USERNAME: rate_limiter
+      SPRING_DATASOURCE_PASSWORD: rate_limiter
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     ports:
       # No fixed host port: each scaled replica gets its own random host port.
       - "8080"
+
+volumes:
+  postgres-data:

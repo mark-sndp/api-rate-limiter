@@ -75,6 +75,6 @@ class RateLimitAdminControllerTest {
         mockMvc.perform(delete("/api/rate-limits/customerA"))
                 .andExpect(status().isNoContent());
 
-        verify(policyProvider).removeOverride("customerA");
+        verify(policyProvider).remove("customerA");
     }
 }
