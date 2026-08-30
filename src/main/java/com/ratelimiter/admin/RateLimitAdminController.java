@@ -2,6 +2,8 @@ package com.ratelimiter.admin;
 
 import com.ratelimiter.domain.RateLimitPolicy;
 import com.ratelimiter.policy.RateLimitPolicyProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/rate-limits")
 public class RateLimitAdminController {
 
+    private static final Logger log = LoggerFactory.getLogger(RateLimitAdminController.class);
+
     private final RateLimitPolicyProvider policyProvider;
 
     public RateLimitAdminController(RateLimitPolicyProvider policyProvider) {
@@ -28,6 +32,7 @@ public class RateLimitAdminController {
     @GetMapping("/{clientId}")
     public RateLimitPolicyResponse getPolicy(@PathVariable String clientId) {
         RateLimitPolicy policy = policyProvider.resolvePolicy(clientId);
+        log.debug("Retrieved effective rate limit policy for client {}", clientId);
         return toResponse(clientId, policy);
     }
 
@@ -36,6 +41,7 @@ public class RateLimitAdminController {
             @RequestBody UpdateRateLimitPolicyRequest request) {
         RateLimitPolicy policy = new RateLimitPolicy(request.maxRequests(), request.windowDuration());
         policyProvider.updatePolicy(clientId, policy);
+        log.info("Received policy update request for client {}", clientId);
         return toResponse(clientId, policy);
     }
 
@@ -43,6 +49,7 @@ public class RateLimitAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetPolicyToDefault(@PathVariable String clientId) {
         policyProvider.remove(clientId);
+        log.info("Received policy reset request for client {}", clientId);
     }
 
     private static RateLimitPolicyResponse toResponse(String clientId, RateLimitPolicy policy) {

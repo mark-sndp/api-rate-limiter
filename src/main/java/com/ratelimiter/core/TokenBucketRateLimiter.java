@@ -5,6 +5,8 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.ratelimiter.config.RateLimiterProperties;
 import com.ratelimiter.domain.RateLimitPolicy;
 import com.ratelimiter.policy.RateLimitPolicyProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +21,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(prefix = "rate-limiter", name = "store", havingValue = "in-memory", matchIfMissing = true)
 public class TokenBucketRateLimiter implements RateLimiter {
+
+    private static final Logger log = LoggerFactory.getLogger(TokenBucketRateLimiter.class);
 
     private final RateLimitPolicyProvider policyProvider;
     private final Cache<String, TokenBucket> bucketsByClientId;
@@ -41,6 +45,9 @@ public class TokenBucketRateLimiter implements RateLimiter {
     public boolean tryAcquire(String clientId) {
         RateLimitPolicy policy = policyProvider.resolvePolicy(clientId);
         TokenBucket bucket = bucketsByClientId.get(clientId, id -> new TokenBucket(policy));
-        return bucket.tryConsume(policy);
+        boolean allowed = bucket.tryConsume(policy);
+        log.debug("In-memory bucket {} request for client {} using policy {}/{}", allowed ? "allowed" : "rejected",
+                clientId, policy.maximumRequests(), policy.windowDuration());
+        return allowed;
     }
 }

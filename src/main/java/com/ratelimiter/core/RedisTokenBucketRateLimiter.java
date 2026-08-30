@@ -4,6 +4,8 @@ import com.ratelimiter.config.RateLimiterProperties;
 import com.ratelimiter.domain.RateLimitPolicy;
 import com.ratelimiter.policy.RateLimitPolicyProvider;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -27,6 +29,7 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
 
     private static final RedisScript<Long> TOKEN_BUCKET_SCRIPT =
             RedisScript.of(new ClassPathResource("scripts/token_bucket.lua"), Long.class);
+    private static final Logger log = LoggerFactory.getLogger(RedisTokenBucketRateLimiter.class);
 
     private final StringRedisTemplate redisTemplate;
     private final RateLimitPolicyProvider policyProvider;
@@ -50,9 +53,16 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
                 String.valueOf(System.currentTimeMillis()),
                 String.valueOf(bucketEvictionSeconds));
 
-        // Redis returns null if the script fails to execute,
-        // which should be treated as a failed attempt to acquire a token.
-        return allowed != null && allowed == 1L;
+        if (allowed == null) {
+            log.warn("Redis token-bucket script returned no decision for client {}", clientId);
+            return false;
+        }
+
+        boolean requestAllowed = allowed == 1L;
+        log.debug("Redis bucket {} request for client {} using key {} and policy {}/{}",
+                requestAllowed ? "allowed" : "rejected", clientId, bucketKey(clientId), policy.maximumRequests(),
+                policy.windowDuration());
+        return requestAllowed;
     }
 
     // Curly-brace hash tag keeps a client's bucket on a single Redis Cluster slot.

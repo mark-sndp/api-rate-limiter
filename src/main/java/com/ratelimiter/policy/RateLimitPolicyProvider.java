@@ -6,6 +6,8 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Component
 public class RateLimitPolicyProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(RateLimitPolicyProvider.class);
 
     private final RateLimitPolicy defaultPolicy;
     private final RateLimitPolicyRepository policyRepository;
@@ -31,8 +35,16 @@ public class RateLimitPolicyProvider {
     /** Returns the client's override policy if one exists, otherwise the current default policy. */
     public RateLimitPolicy resolvePolicy(String clientId) {
         validateClientId(clientId);
-        return policiesByClientId.get(clientId, this::fetchFromDB)
-                .orElse(defaultPolicy);
+        Optional<RateLimitPolicy> overridePolicy = policiesByClientId.getIfPresent(clientId);
+        if (overridePolicy == null) {
+            overridePolicy = policiesByClientId.get(clientId, this::fetchFromDB);
+            log.debug("Resolved {} policy for client {}", overridePolicy.isPresent() ? "override" : "default",
+                    clientId);
+        } else {
+            log.debug("Resolved cached {} policy for client {}", overridePolicy.isPresent() ? "override" : "default",
+                    clientId);
+        }
+        return overridePolicy.orElse(defaultPolicy);
     }
 
     @Transactional
@@ -40,6 +52,8 @@ public class RateLimitPolicyProvider {
         validateClientId(clientId);
         policyRepository.save(RateLimitPolicyEntity.from(clientId, Objects.requireNonNull(policy, "policy must not be null")));
         policiesByClientId.invalidate(clientId);
+        log.info("Updated rate limit policy for client {} to {}/{}", clientId, policy.maximumRequests(),
+            policy.windowDuration());
     }
 
     @Transactional
@@ -47,6 +61,7 @@ public class RateLimitPolicyProvider {
         validateClientId(clientId);
         policyRepository.deleteById(clientId);
         policiesByClientId.invalidate(clientId);
+        log.info("Removed rate limit policy override for client {}; default policy will apply", clientId);
     }
 
     // Converts the configuration properties to a {@link RateLimitPolicy} instance.
