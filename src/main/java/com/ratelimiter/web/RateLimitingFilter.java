@@ -55,6 +55,9 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/api/rate-limits");
+        String uri = request.getRequestURI();
+        return uri.startsWith("/api/rate-limits")
+                || uri.startsWith("/v3/api-docs")
+                || uri.startsWith("/swagger-ui");
     }
 }

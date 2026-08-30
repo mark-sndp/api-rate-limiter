@@ -124,6 +124,29 @@ PostgreSQL uses standard `spring.datasource.url`, `spring.datasource.username`, 
 When `rate-limiter.store` is `redis`, Redis uses standard `spring.data.redis.host` /
 `spring.data.redis.port` properties (defaults: `localhost` / `6379`).
 
+### Logging
+
+This application uses **SLF4J** with Spring Boot's default logging provider (Logback). The log level for the `com.ratelimiter` package is controlled via the `RATE_LIMITER_LOG_LEVEL` environment variable and defaults to `DEBUG`.
+
+**Configuration:**
+- The log level is set in `application.yml`:
+  ```yaml
+  logging:
+    level:
+      com.ratelimiter: ${RATE_LIMITER_LOG_LEVEL:DEBUG}
+  ```
+- To change the log level at runtime, set the `RATE_LIMITER_LOG_LEVEL` environment variable before starting the application:
+  ```bash
+  export RATE_LIMITER_LOG_LEVEL=INFO
+  mvn spring-boot:run
+  ```
+
+**What is logged:**
+- **INFO level**: Important events such as policy updates/removals and missing request headers
+  - Example: `"Received policy update request for client X"`, `"Rate limit exceeded for client Y"`
+- **DEBUG level** (default): Detailed tracking of rate-limit decisions for each request
+  - Example: `"In-memory bucket allowed/rejected request for client Z"`
+
 ### Runtime admin API
 
 Policies can be inspected and changed at runtime without a restart:
@@ -156,6 +179,13 @@ curl -H "X-Client-Id: customerA" localhost:8080/api/ping
 ```bash
 mvn spring-boot:run
 ```
+
+### API documentation (Swagger UI)
+
+Once the app is running, the interactive API docs are available at:
+
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- OpenAPI JSON: http://localhost:8080/v3/api-docs
 
 ### Running multiple instances with Docker Compose
 
@@ -198,9 +228,8 @@ mvn test -Dgroups=redis
 
 ## Assumptions & production notes
 
-- **In-memory is the default store**, scoped to a single JVM instance — matches the original
-  requirement's simplest interpretation and requires no extra infrastructure to run or test.
-  Switching a horizontally-scaled deployment to the Redis store (`rate-limiter.store=redis`) is a
+- **In-memory is the default store**, scoped to a single JVM instance. Switching to a
+  horizontally-scaled deployment to the Redis store (`rate-limiter.store=redis`) is a
   configuration change, not a code change, thanks to the `RateLimiter` strategy interface.
 - **Redis is a single point of failure/bottleneck once enabled**: This implementation targets a
   single Redis instance. Production use at larger scale would want Redis Cluster/Sentinel for availability.
@@ -210,8 +239,8 @@ mvn test -Dgroups=redis
   to `rate-limiter.policy-cache-duration` after another instance changes it.
 - **No authentication on the admin API**: `/api/rate-limits/**` has no access control in this
   exercise. Production use requires securing these endpoints (e.g. Spring Security with RBAC).
-- **No request queueing**: Requests exceeding the limit are rejected immediately, per the
-  requirements — there is no fairness queue or backoff/retry mechanism.
+- **No request queueing**: Requests exceeding the limit are rejected immediately, there is no
+  fairness queue or backoff/retry mechanism.
 - **Monotonic clock**: The in-memory implementation uses `System.nanoTime()` (immune to wall-clock/
   NTP adjustments); the Redis implementation uses `System.currentTimeMillis()` from whichever
   instance handles the request, so significant clock drift between application hosts could skew
