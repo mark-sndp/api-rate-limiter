@@ -3,6 +3,67 @@
 An API rate limiting service built with Java 21 and Spring Boot 4. The default policy is
 configuration-owned, and customer-specific policy overrides are stored in PostgreSQL.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    Client["Client / API Consumer"] -->|HTTP Requests| App["Spring Boot App"]
+    App -->|Reads/Writes policy data| DB["Database\n(PostgreSQL)"]
+    App -->|Cache + rate-limit state| Redis["Redis"]
+    App -->|Executes Lua script| Redis
+    Redis -->|Token bucket / counters| App
+    Admin["Admin / Management API"] -->|Configure policies| App
+    App -->|Returns allow/deny response| Client
+```
+
+## Request flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Filter as RateLimitingFilter
+    participant Controller as API Controller
+    participant Service as RateLimiterService
+    participant Policy as RateLimitPolicyProvider
+    participant DB as PostgreSQL
+    participant Limiter as RateLimiter Strategy
+    participant Redis as Redis
+    participant Bucket as TokenBucket / Lua Script
+
+    Client->>Filter: GET /api/ping with X-Client-Id
+    Filter->>Service: allowRequest(clientId)
+
+    Service->>Policy: resolvePolicy(clientId)
+    Policy->>DB: read customer override
+    alt Policy override exists
+        DB-->>Policy: effective policy
+    else No override
+        DB-->>Policy: no row found
+        Policy-->>Service: fallback default policy
+    end
+
+    Service->>Limiter: allowRequest(clientId, policy)
+
+    alt Store = in-memory
+        Limiter->>Bucket: check + refill token bucket
+        Bucket-->>Limiter: allowed / denied
+    else Store = redis
+        Limiter->>Redis: execute token_bucket.lua
+        Redis-->>Limiter: updated token count + result
+    end
+
+    Limiter-->>Service: true / false
+    Service-->>Filter: permit or reject
+
+    alt Request allowed
+        Filter->>Controller: forward request
+        Controller-->>Client: 200 OK
+    else Request denied
+        Filter-->>Client: 429 Too Many Requests
+    end
+```
+
 ## Core API
 
 ```java
@@ -19,7 +80,7 @@ current policy, `false` if the client has exceeded its limit.
   short bursts up to the configured maximum while enforcing a steady average rate.
 - **Thread safety**: Each `TokenBucket` guards its state with a single `synchronized` method, so
   concurrent requests for the same client are serialized correctly. Buckets are stored in a
-  `com.github.benmanes.caffeine.cache.Cache<String, TokenBucket>`, which is safe for concurrent
+  `caffeine.cache.Cache<String, TokenBucket>`, which is safe for concurrent
   access across many different clients.
 - **Bounded memory**: Buckets are evicted after `rate-limiter.bucket-eviction-duration` of
   inactivity (Caffeine `expireAfterAccess`), so memory does not grow indefinitely as new clients
@@ -48,7 +109,7 @@ rate-limiter:
   # "in-memory" (default, single JVM only) or "redis" (shared state, required for horizontal scaling).
   store: in-memory
   default-policy:
-    max-requests: 60
+    max-requests: 5
     window-duration: 1m
   bucket-eviction-duration: 1h
 ```
